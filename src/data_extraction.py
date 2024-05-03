@@ -1,38 +1,48 @@
-import oandapyV20
-from oandapyV20 import API
-import oandapyV20.endpoints.instruments as instruments
+import MetaTrader5 as mt5
+from datetime import datetime
+import pandas as pd
 
-def download_oanda_data(access_token, account_id, instrument="EUR_USD", granularity='M5', start_date='2022-01-01T00:00:00Z', end_date='2023-01-01T00:00:00Z'):
+def get_data_for_scalping(symbol, timeframe=mt5.TIMEFRAME_M5, look_back_days=30):
     """
-    Download historical forex data from OANDA for a given instrument and timeframe.
+    Collects historical data for scalping.
 
     Args:
-    access_token (str): OANDA API access token.
-    account_id (str): OANDA account ID.
-    instrument (str): Currency pair in OANDA format. Default is EUR/USD.
-    granularity (str): Granularity of the candles. 'M5' for 5 minutes.
-    start_date (str): Start date for the data in ISO8601 format.
-    end_date (str): End date for the data in ISO8601 format.
+    symbol (str): The symbol for which to collect data, e.g., 'EURUSD'.
+    timeframe (uint): The timeframe for the data in MT5 terms.
+    look_back_days (int): How many days back to collect data.
 
     Returns:
     pd.DataFrame: DataFrame containing the historical data.
     """
-    api = API(access_token=access_token)
-    params = {
-        "from": start_date,
-        "to": end_date,
-        "granularity": granularity,
-        "price": "M"  # Midpoint prices
-    }
-    r = instruments.InstrumentsCandles(instrument=instrument, params=params)
-    data = api.request(r)
+    # Set the timezone to UTC for consistency
+    timezone = pytz.UTC
+    utc_from = datetime.now(timezone) - pd.Timedelta(days=look_back_days)
+    utc_to = datetime.now(timezone)
     
-    # Process the data to a DataFrame or another preferable format here
+    # Enable the display of floating point values with two decimal places
+    pd.set_option('display.float_format', '{:.2f}'.format)
+    
+    # Check if the desired symbol is available in MT5
+    if not symbol in mt5.symbols_get():
+        print(f"Symbol {symbol} not found, can't get history.")
+        return None
 
-    return data
+    # Set the symbol
+    mt5.symbol_select(symbol, True)
+    
+    # Get the historical data
+    rates = mt5.copy_rates_range(symbol, timeframe, utc_from, utc_to)
+    
+    # Shutdown the MT5 connection
+    mt5.shutdown()
 
-# Example usage (You need to replace 'YOUR_ACCESS_TOKEN' and 'YOUR_ACCOUNT_ID' with your actual OANDA API credentials)
-access_token = 'YOUR_ACCESS_TOKEN'
-account_id = 'YOUR_ACCOUNT_ID'
-data = download_oanda_data(access_token, account_id)
-print(data)
+    # Create a DataFrame from the obtained data
+    df = pd.DataFrame(rates)
+    df['time'] = pd.to_datetime(df['time'], unit='s')
+    
+    # Return the DataFrame with the historical data
+    return df
+
+# Example usage:
+data = get_data_for_scalping("EURUSD")
+print(data.head())
